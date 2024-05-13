@@ -4,7 +4,7 @@ use super::extract::{
 use crate::CoordinateSpace;
 use bevy::prelude::*;
 use bevy::render::camera::ExtractedCamera;
-use bevy::render::view::ExtractedView;
+use bevy::render::view::{ExtractedView, RenderLayers};
 use vello::kurbo::Affine;
 
 #[derive(Component, Copy, Clone, Deref, DerefMut)]
@@ -113,11 +113,14 @@ impl PrepareRenderInstance for ExtractedRenderAsset {
 
 pub fn prepare_vector_affines(
     mut commands: Commands,
-    camera: Query<(&ExtractedCamera, &ExtractedView)>,
+    camera: Query<(&ExtractedCamera, &ExtractedView, &RenderLayers)>,
     mut render_vectors: Query<(Entity, &ExtractedRenderAsset)>,
     pixel_scale: Res<ExtractedPixelScale>,
 ) {
-    let Ok((camera, view)) = camera.get_single() else {
+    let Some((camera, view, _)) = camera
+        .iter()
+        .find(|&(_, _, &render_layers)| render_layers.intersects(&RenderLayers::default()))
+    else {
         return;
     };
     let viewport_size: UVec2 = camera.physical_viewport_size.unwrap();
@@ -136,16 +139,19 @@ pub fn prepare_vector_affines(
 
 pub fn prepare_scene_affines(
     mut commands: Commands,
-    camera: Query<(&ExtractedCamera, &ExtractedView)>,
-    mut render_vectors: Query<(Entity, &ExtractedRenderScene)>,
+    camera: Query<(&ExtractedCamera, &ExtractedView, &RenderLayers)>,
+    mut render_scenes: Query<(Entity, &ExtractedRenderScene)>,
     pixel_scale: Res<ExtractedPixelScale>,
 ) {
-    let Ok((camera, view)) = camera.get_single() else {
+    let Some((camera, view, _)) = camera
+        .iter()
+        .find(|&(_, _, &render_layers)| render_layers.intersects(&RenderLayers::default()))
+    else {
         return;
     };
-    let size_pixels: UVec2 = camera.physical_viewport_size.unwrap();
-    let (pixels_x, pixels_y) = (size_pixels.x as f32, size_pixels.y as f32);
-    for (entity, render_vector) in render_vectors.iter_mut() {
+    for (entity, render_scene) in render_scenes.iter_mut() {
+        let size_pixels: UVec2 = camera.physical_viewport_size.unwrap();
+        let (pixels_x, pixels_y) = (size_pixels.x as f32, size_pixels.y as f32);
         let ndc_to_pixels_matrix = Mat4::from_cols_array_2d(&[
             [pixels_x / 2.0, 0.0, 0.0, pixels_x / 2.0],
             [0.0, pixels_y / 2.0, 0.0, pixels_y / 2.0],
@@ -154,9 +160,9 @@ pub fn prepare_scene_affines(
         ])
         .transpose();
 
-        let world_transform = render_vector.transform;
+        let world_transform = render_scene.transform;
 
-        let raw_transform = match render_vector.render_mode {
+        let raw_transform = match render_scene.render_mode {
             CoordinateSpace::ScreenSpace => {
                 let mut model_matrix = world_transform.compute_matrix().mul_scalar(pixel_scale.0);
                 model_matrix.w_axis.y *= -1.0;
@@ -201,11 +207,14 @@ pub fn prepare_scene_affines(
 
 pub fn prepare_text_affines(
     mut commands: Commands,
-    camera: Query<(&ExtractedCamera, &ExtractedView)>,
+    camera: Query<(&ExtractedCamera, &ExtractedView, &RenderLayers)>,
     render_texts: Query<(Entity, &ExtractedRenderText)>,
     pixel_scale: Res<ExtractedPixelScale>,
 ) {
-    let Ok((camera, view)) = camera.get_single() else {
+    let Some((camera, view, _)) = camera
+        .iter()
+        .find(|&(_, _, &render_layers)| render_layers.intersects(&RenderLayers::default()))
+    else {
         return;
     };
     let size_pixels: UVec2 = camera.physical_viewport_size.unwrap();
